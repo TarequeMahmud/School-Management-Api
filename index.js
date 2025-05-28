@@ -23,6 +23,21 @@ try {
   console.log(error);
 }
 
+// function to get distance through Haversine formula
+const getDistance = (latitude1, longitude1, latitude2, longitude2) => {
+  const earthRadius = 6371;
+  const dLatitude = ((latitude2 - latitude1) * Math.PI) / 180;
+  const dLongitude = ((longitude2 - longitude1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLatitude / 2) * Math.sin(dLatitude / 2) +
+    Math.cos((latitude1 * Math.PI) / 180) *
+      Math.cos((latitude2 * Math.PI) / 180) *
+      Math.sin(dLongitude / 2) *
+      Math.sin(dLongitude / 2);
+  const centralAngle = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return earthRadius * centralAngle;
+};
+
 app.post("/addSchool", async (req, res) => {
   const { name, address, latitude, longitude } = req.body;
 
@@ -45,10 +60,44 @@ app.post("/addSchool", async (req, res) => {
         `,
       [name, address, latitude, longitude]
     );
-    return res.status(201).json("School data saved successfully.");
+    return res.status(201).json({ message: "School data saved successfully." });
   } catch (error) {
     console.log(error);
 
+    return res.status(500).json({ message: "Error in the server" });
+  }
+});
+
+app.get("/listSchools", async (req, res) => {
+  const { latitude, longitude } = req.query;
+  //check if non-empty data
+  if (!latitude || !longitude)
+    return res.status(400).json({ message: "Necessary field missing." });
+
+  //validate data
+  if (parseFloat(latitude) === NaN || parseFloat(longitude) === NaN)
+    return res.status(400).json({ message: "Please enter valid data." });
+
+  const floorLatitude = Math.floor(parseFloat(latitude));
+  const floorLongitude = Math.floor(parseFloat(longitude));
+
+  try {
+    const [schools] = await connection.query("SELECT * FROM schools");
+    // sort all schools based on geographical distance
+    const newSortedSchools = schools
+      .map((school) => ({
+        ...school,
+        distance: getDistance(
+          floorLatitude,
+          floorLongitude,
+          school.latitude,
+          school.longitude
+        ),
+      }))
+      .sort((a, b) => a.distance - b.distance);
+    return res.status(200).json({ schools: newSortedSchools });
+  } catch (error) {
+    console.log(error);
     return res.status(500).json({ message: "Error in the server" });
   }
 });
